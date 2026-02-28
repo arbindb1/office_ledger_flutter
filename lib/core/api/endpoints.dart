@@ -18,5 +18,6 @@ class Endpoints {
   static String notificationAssign(int id) => '/api/notifications/$id/assign';
   static String notificationIgnore(int id) => '/api/notifications/$id/ignore';
   static String notificationApply(int id) => '/api/notifications/$id/apply';
+  static String colleagueAnalytics(int id) => '/api/colleagues/$id/analytics';
 
 }

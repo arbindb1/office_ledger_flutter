@@ -33,51 +33,93 @@ class _ItemFormSheetState extends State<ItemFormSheet> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
     final isEdit = widget.initial != null;
 
-    return Padding(
+    return Container(
+      // FIXED: Removed duplicate 'color' property
+      decoration: const BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.vertical(top: Radius.circular(32)),
+      ),
       padding: EdgeInsets.only(
-        left: 16,
-        right: 16,
-        top: 16,
-        bottom: 16 + MediaQuery.of(context).viewInsets.bottom,
+        left: 24,
+        right: 24,
+        top: 12,
+        bottom: 24 + MediaQuery.of(context).viewInsets.bottom,
       ),
       child: Form(
         key: _formKey,
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Text(isEdit ? 'Edit Item' : 'New Item',
-                style: Theme.of(context).textTheme.titleLarge),
-            const SizedBox(height: 12),
+            // Figma-style Grab Handle
+            Container(
+              width: 40,
+              height: 4,
+              margin: const EdgeInsets.only(bottom: 20),
+              decoration: BoxDecoration(
+                color: theme.colorScheme.outlineVariant,
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            Text(
+              isEdit ? 'Edit Inventory Item' : 'Add New Item',
+              style: theme.textTheme.titleLarge?.copyWith(
+                fontWeight: FontWeight.w900,
+                color: theme.colorScheme.onSurface,
+              ),
+            ),
+            const SizedBox(height: 24),
             TextFormField(
               controller: _name,
-              decoration: const InputDecoration(
-                labelText: 'Item name',
-                border: OutlineInputBorder(),
+              autofocus: true,
+              decoration: InputDecoration(
+                labelText: 'Item Name',
+                hintText: 'e.g. Chicken Momo',
+                prefixIcon: const Icon(Icons.drive_file_rename_outline_rounded),
+                filled: true,
+                fillColor: theme.colorScheme.surface,
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(16),
+                  borderSide: BorderSide.none,
+                ),
               ),
-              validator: (v) =>
-              (v == null || v.trim().isEmpty) ? 'Required' : null,
+              validator: (v) => (v == null || v.trim().isEmpty) ? 'Required' : null,
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: 16),
             TextFormField(
               controller: _cost,
-              decoration: const InputDecoration(
-                labelText: 'Cost',
-                border: OutlineInputBorder(),
+              decoration: InputDecoration(
+                labelText: 'Default Price',
+                prefixText: 'Rs. ',
+                prefixIcon: const Icon(Icons.payments_rounded),
+                filled: true,
+                fillColor: theme.colorScheme.surface,
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(16),
+                  borderSide: BorderSide.none,
+                ),
               ),
-              keyboardType: TextInputType.number,
+              keyboardType: const TextInputType.numberWithOptions(decimal: true),
               validator: (v) {
                 final d = double.tryParse((v ?? '').trim());
-                if (d == null) return 'Enter a number';
-                if (d < 0) return 'Must be >= 0';
+                if (d == null) return 'Enter a valid number';
+                if (d < 0) return 'Must be 0 or more';
                 return null;
               },
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: 24),
             SizedBox(
               width: double.infinity,
-              child: ElevatedButton(
+              height: 56,
+              child: FilledButton(
+                style: FilledButton.styleFrom(
+                  backgroundColor: theme.colorScheme.primary, // Indigo from Figma
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                ),
                 onPressed: _saving
                     ? null
                     : () {
@@ -88,7 +130,10 @@ class _ItemFormSheetState extends State<ItemFormSheet> {
                     'cost': double.parse(_cost.text.trim()),
                   });
                 },
-                child: Text(_saving ? 'Saving...' : (isEdit ? 'Update' : 'Create')),
+                child: Text(
+                  _saving ? 'Saving...' : (isEdit ? 'Update Item' : 'Create Item'),
+                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                ),
               ),
             ),
           ],

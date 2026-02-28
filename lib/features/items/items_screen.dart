@@ -25,11 +25,9 @@ class _ItemsScreenState extends State<ItemsScreen> {
   }
 
   Future<void> _reload() async {
-    // Update the future and trigger a rebuild
     setState(() {
       _future = _service.fetchItems(includeInactive: _includeInactive);
     });
-    // Wait for the data to actually arrive (important for RefreshIndicator)
     await _future;
   }
 
@@ -37,6 +35,7 @@ class _ItemsScreenState extends State<ItemsScreen> {
     final payload = await showModalBottomSheet<Map<String, dynamic>>(
       context: context,
       isScrollControlled: true,
+      backgroundColor: Colors.transparent, // Required for rounded corners in sheet
       builder: (_) => const ItemFormSheet(),
     );
     if (payload == null) return;
@@ -52,6 +51,7 @@ class _ItemsScreenState extends State<ItemsScreen> {
     final payload = await showModalBottomSheet<Map<String, dynamic>>(
       context: context,
       isScrollControlled: true,
+      backgroundColor: Colors.transparent,
       builder: (_) => ItemFormSheet(initial: item),
     );
     if (payload == null) return;
@@ -68,11 +68,15 @@ class _ItemsScreenState extends State<ItemsScreen> {
     final ok = await showDialog<bool>(
       context: context,
       builder: (_) => AlertDialog(
-        title: const Text('Deactivate item?'),
-        content: Text('Deactivate "${item.name}"?'),
+        title: const Text('Deactivate Item?'),
+        content: Text('Are you sure you want to deactivate "${item.name}"?'),
         actions: [
           TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
-          ElevatedButton(onPressed: () => Navigator.pop(context, true), child: const Text('Deactivate')),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: FilledButton.styleFrom(backgroundColor: Colors.orange),
+            child: const Text('Deactivate'),
+          ),
         ],
       ),
     );
@@ -85,11 +89,15 @@ class _ItemsScreenState extends State<ItemsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
     return Scaffold(
+      backgroundColor: theme.colorScheme.surface,
       appBar: AppBar(
-        title: const Text('Items'),
+        title: const Text('Inventory'),
         actions: [
           PopupMenuButton<String>(
+            icon: const Icon(Icons.more_vert_rounded),
             onSelected: (value) {
               if (value == 'toggle_inactive') {
                 setState(() {
@@ -101,15 +109,13 @@ class _ItemsScreenState extends State<ItemsScreen> {
             itemBuilder: (context) => [
               PopupMenuItem(
                 value: 'toggle_inactive',
-                child: Row(
-                  children: [
-                    Icon(
-                      _includeInactive ? Icons.check_box : Icons.check_box_outline_blank,
-                      color: Theme.of(context).primaryColor,
-                    ),
-                    const SizedBox(width: 12),
-                    const Text('Show Inactive'),
-                  ],
+                child: ListTile(
+                  leading: Icon(
+                    _includeInactive ? Icons.check_box : Icons.check_box_outline_blank,
+                    color: theme.colorScheme.primary,
+                  ),
+                  title: const Text('Show Inactive'),
+                  contentPadding: EdgeInsets.zero,
                 ),
               ),
             ],
@@ -118,7 +124,7 @@ class _ItemsScreenState extends State<ItemsScreen> {
       ),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: _openCreate,
-        icon: const Icon(Icons.add),
+        icon: const Icon(Icons.add_rounded),
         label: const Text('New Item'),
       ),
       body: FutureBuilder<List<Item>>(
@@ -132,9 +138,9 @@ class _ItemsScreenState extends State<ItemsScreen> {
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  const Icon(Icons.error_outline, size: 48, color: Colors.red),
+                  const Icon(Icons.cloud_off_rounded, size: 48, color: Colors.grey),
                   const SizedBox(height: 16),
-                  Text('Failed to load items', style: Theme.of(context).textTheme.titleMedium),
+                  Text('Failed to load inventory', style: theme.textTheme.titleMedium),
                   const SizedBox(height: 16),
                   FilledButton.icon(onPressed: _reload, icon: const Icon(Icons.refresh), label: const Text('Retry')),
                 ],
@@ -148,9 +154,9 @@ class _ItemsScreenState extends State<ItemsScreen> {
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                   Icon(Icons.inventory_2_outlined, size: 64, color: Colors.grey[400]),
+                  Icon(Icons.inventory_2_outlined, size: 64, color: Colors.grey[400]),
                   const SizedBox(height: 16),
-                   Text('No items yet', style: Theme.of(context).textTheme.titleLarge?.copyWith(color: Colors.grey[600])),
+                  Text('No items found', style: theme.textTheme.titleLarge?.copyWith(color: Colors.grey[600])),
                 ],
               ),
             );
@@ -160,61 +166,95 @@ class _ItemsScreenState extends State<ItemsScreen> {
             onRefresh: _reload,
             child: ListView.builder(
               physics: const AlwaysScrollableScrollPhysics(),
-              padding: const EdgeInsets.all(16),
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
               itemCount: items.length,
               itemBuilder: (context, i) {
                 final it = items[i];
-                return Card(
-                  elevation: 0,
-                  color: Theme.of(context).colorScheme.surfaceContainer,
-                  margin: const EdgeInsets.only(bottom: 12),
-                  clipBehavior: Clip.antiAlias,
-                  child: InkWell(
-                    onTap: () => _openEdit(it),
-                    onLongPress: it.isActive ? () => _deactivate(it) : null,
-                    child: Padding(
-                      padding: const EdgeInsets.all(16),
-                      child: Row(
-                        children: [
-                          Container(
-                            width: 48,
-                            height: 48,
-                            decoration: BoxDecoration(
-                              color: Theme.of(context).colorScheme.primaryContainer,
-                              borderRadius: BorderRadius.circular(12),
+                return Padding(
+                  padding: const EdgeInsets.only(bottom: 12),
+                  child: Card(
+                    // Inherits rounded corners and borders from app.dart CardThemeData
+                    child: InkWell(
+                      onTap: () => _openEdit(it),
+                      onLongPress: it.isActive ? () => _deactivate(it) : null,
+                      borderRadius: BorderRadius.circular(24),
+                      child: Padding(
+                        padding: const EdgeInsets.all(16),
+                        child: Row(
+                          children: [
+                            Container(
+                              width: 52,
+                              height: 52,
+                              decoration: BoxDecoration(
+                                color: it.isActive
+                                    ? theme.colorScheme.primary.withOpacity(0.1)
+                                    : Colors.grey.withOpacity(0.1),
+                                borderRadius: BorderRadius.circular(16),
+                              ),
+                              child: Icon(
+                                Icons.inventory_2_rounded,
+                                color: it.isActive ? theme.colorScheme.primary : Colors.grey,
+                                size: 24,
+                              ),
                             ),
-                            child: Icon(Icons.inventory_2, color: Theme.of(context).colorScheme.onPrimaryContainer),
-                          ),
-                          const SizedBox(width: 16),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(it.name, style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600)),
-                                const SizedBox(height: 4),
-                                Row(
-                                  children: [
-                                    if (!it.isActive)
-                                      Container(
-                                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                        margin: const EdgeInsets.only(right: 8),
-                                        decoration: BoxDecoration(
-                                          color: Colors.red.withOpacity(0.1),
-                                          borderRadius: BorderRadius.circular(4),
+                            const SizedBox(width: 16),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                      it.name,
+                                      style: theme.textTheme.titleMedium?.copyWith(
+                                        fontSize: 16,
+                                        fontWeight: FontWeight.w700,
+                                        color: it.isActive ? null : theme.colorScheme.outline,
+                                        decoration: it.isActive ? null : TextDecoration.lineThrough,
+                                      )
+                                  ),
+                                  const SizedBox(height: 4),
+                                  Row(
+                                    children: [
+                                      if (!it.isActive)
+                                        Container(
+                                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                          margin: const EdgeInsets.only(right: 8),
+                                          decoration: BoxDecoration(
+                                            color: Colors.red.withOpacity(0.1),
+                                            borderRadius: BorderRadius.circular(4),
+                                          ),
+                                          child: Text(
+                                              'Inactive',
+                                              style: theme.textTheme.labelSmall?.copyWith(color: Colors.red, fontWeight: FontWeight.bold)
+                                          ),
                                         ),
-                                        child: Text('Inactive', style: Theme.of(context).textTheme.labelSmall?.copyWith(color: Colors.red)),
+                                      Text(
+                                          'ID: ${it.id}',
+                                          style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.outline)
                                       ),
-                                    Text('ID: ${it.id}', style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Theme.of(context).colorScheme.outline)),
-                                  ],
+                                    ],
+                                  ),
+                                ],
+                              ),
+                            ),
+                            Column(
+                              crossAxisAlignment: CrossAxisAlignment.end,
+                              children: [
+                                Text(
+                                  'Rs. ${it.default_price.toStringAsFixed(0)}',
+                                  style: TextStyle(
+                                    fontSize: 18,
+                                    fontWeight: FontWeight.w900,
+                                    color: it.isActive ? theme.colorScheme.onSurface : theme.colorScheme.outline,
+                                  ),
+                                ),
+                                const Text(
+                                    'PRICE',
+                                    style: TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: Colors.grey)
                                 ),
                               ],
                             ),
-                          ),
-                          Text(
-                            it.default_price.toStringAsFixed(2),
-                            style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
-                          ),
-                        ],
+                          ],
+                        ),
                       ),
                     ),
                   ),

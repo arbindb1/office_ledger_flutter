@@ -4,6 +4,7 @@ import '../../core/storage/app_prefs.dart';
 import 'ledger_service.dart';
 import 'add_payment_sheet.dart';
 import 'colleague_ledger_model.dart';
+import 'colleague_analytics_screen.dart'; // Import your new analytics screen
 
 class ColleagueLedgerScreen extends StatefulWidget {
   const ColleagueLedgerScreen({super.key, required this.colleagueId});
@@ -25,15 +26,17 @@ class _ColleagueLedgerScreenState extends State<ColleagueLedgerScreen> {
   }
 
   Future<void> _reload() async {
-    final f = _service.getColleagueLedger(widget.colleagueId);
-    setState(() => _future = f);
-    await f;
+    setState(() {
+      _future = _service.getColleagueLedger(widget.colleagueId);
+    });
+    await _future;
   }
 
   Future<void> _addPayment() async {
     final payload = await showModalBottomSheet<Map<String, dynamic>>(
       context: context,
       isScrollControlled: true,
+      backgroundColor: Colors.transparent, // Figma rounded style
       builder: (_) => const AddPaymentSheet(),
     );
     if (payload == null) return;
@@ -49,116 +52,188 @@ class _ColleagueLedgerScreenState extends State<ColleagueLedgerScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text('Ledger')),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: _addPayment,
-        icon: const Icon(Icons.add),
-        label: const Text('Add Payment'),
-      ),
-      body: FutureBuilder<ColleagueLedgerResponse>(
-        future: _future,
-        builder: (context, snap) {
-          if (snap.connectionState == ConnectionState.waiting) {
-            return const Center(child: CircularProgressIndicator());
-          }
-          if (snap.hasError) {
-            return Center(
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const Icon(Icons.error_outline, size: 48, color: Colors.red),
-                    const SizedBox(height: 16),
-                    Text('Failed to load ledger', style: Theme.of(context).textTheme.titleMedium),
-                    const SizedBox(height: 16),
-                    FilledButton.icon(onPressed: _reload, icon: const Icon(Icons.refresh), label: const Text('Retry')),
-                  ],
+    final theme = Theme.of(context);
+
+    return FutureBuilder<ColleagueLedgerResponse>(
+      future: _future,
+      builder: (context, snap) {
+        // We handle loading/error inside the scaffold so the AppBar is always visible
+        String colleagueName = "Ledger";
+        if (snap.hasData) colleagueName = snap.data!.colleague.name;
+
+        return Scaffold(
+          backgroundColor: theme.colorScheme.surface,
+          appBar: AppBar(
+            title: Text(colleagueName),
+            actions: [
+              // NEW FEATURE: Analytics Button
+              if (snap.hasData)
+                IconButton(
+                  icon: const Icon(Icons.pie_chart_outline_rounded),
+                  tooltip: 'View Consumption Analytics',
+                  onPressed: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => ColleagueAnalyticsScreen(
+                          colleagueId: widget.colleagueId,
+                          colleagueName: colleagueName,
+                        ),
+                      ),
+                    );
+                  },
                 ),
+            ],
+          ),
+          floatingActionButton: FloatingActionButton.extended(
+            onPressed: _addPayment,
+            icon: const Icon(Icons.add_rounded),
+            label: const Text('Add Payment'),
+          ),
+          body: _buildBody(snap, theme),
+        );
+      },
+    );
+  }
+
+  Widget _buildBody(AsyncSnapshot<ColleagueLedgerResponse> snap, ThemeData theme) {
+    if (snap.connectionState == ConnectionState.waiting) {
+      return const Center(child: CircularProgressIndicator());
+    }
+
+    if (snap.hasError) {
+      return Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.error_outline, size: 48, color: Colors.red),
+            const SizedBox(height: 16),
+            const Text('Failed to load ledger'),
+            TextButton(onPressed: _reload, child: const Text('Retry')),
+          ],
+        ),
+      );
+    }
+
+    final data = snap.data!;
+    final outstanding = data.outstanding;
+
+    return RefreshIndicator(
+      onRefresh: _reload,
+      child: CustomScrollView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        slivers: [
+          // 1. Figma Summary Card (Balance)
+          SliverToBoxAdapter(
+            child: Container(
+              margin: const EdgeInsets.all(20),
+              padding: const EdgeInsets.all(28),
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [theme.colorScheme.primary, theme.colorScheme.secondary],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+                borderRadius: BorderRadius.circular(32),
+                boxShadow: [
+                  BoxShadow(
+                    color: theme.colorScheme.primary.withValues(alpha: 0.3),
+                    blurRadius: 20,
+                    offset: const Offset(0, 10),
+                  )
+                ],
               ),
-            );
-          }
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Outstanding Balance',
+                    style: TextStyle(color: Colors.white.withValues(alpha: 0.8), fontWeight: FontWeight.w500),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'Rs. ${outstanding.toStringAsFixed(2)}',
+                    style: theme.textTheme.headlineMedium?.copyWith(
+                      color: Colors.white,
+                      fontSize: 32,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
 
-          final data = snap.data!;
-          final c = data.colleague;
-          final outstanding = data.outstanding;
-          final isPositive = outstanding >= 0;
+          // 2. Transaction Header
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
+              child: Text(
+                'Recent Transactions',
+                style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800),
+              ),
+            ),
+          ),
 
-          return RefreshIndicator(
-            onRefresh: _reload,
-            child: ListView(
-              physics: const AlwaysScrollableScrollPhysics(),
-              padding: const EdgeInsets.all(16),
-              children: [
-                // Summary Card
-                Card(
-                  elevation: 0,
-                  color: Theme.of(context).colorScheme.primaryContainer,
-                  margin: const EdgeInsets.only(bottom: 24),
-                  child: Padding(
-                    padding: const EdgeInsets.all(20),
-                    child: Column(
-                      children: [
-                        Text('Outstanding Balance', style: Theme.of(context).textTheme.titleSmall?.copyWith(color: Theme.of(context).colorScheme.onPrimaryContainer)),
-                        const SizedBox(height: 8),
-                        Text(
-                          outstanding.toStringAsFixed(2),
-                          style: Theme.of(context).textTheme.displaySmall?.copyWith(
-                            fontWeight: FontWeight.bold,
-                            color: isPositive ? Theme.of(context).colorScheme.onPrimaryContainer : Colors.red,
+          // 3. Transactions List
+          if (data.ledger.isEmpty)
+            const SliverFillRemaining(
+              hasScrollBody: false,
+              child: Center(child: Text('No transactions recorded yet.')),
+            )
+          else
+            SliverPadding(
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+              sliver: SliverList(
+                delegate: SliverChildBuilderDelegate(
+                      (context, i) {
+                    final e = data.ledger[i];
+                    final isDebit = e.entryType == 'debit';
+                    final color = isDebit ? Colors.redAccent : Colors.green;
+
+                    return Padding(
+                      padding: const EdgeInsets.only(bottom: 12),
+                      child: Card(
+                        child: ListTile(
+                          contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                          leading: Container(
+                            padding: const EdgeInsets.all(10),
+                            decoration: BoxDecoration(
+                              color: color.withValues(alpha: 0.1),
+                              shape: BoxShape.circle,
+                            ),
+                            child: Icon(
+                              isDebit ? Icons.shopping_bag_outlined : Icons.account_balance_wallet_outlined,
+                              color: color,
+                              size: 20,
+                            ),
+                          ),
+                          title: Text(
+                            e.batch_name,
+                            style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.bold),
+                          ),
+                          subtitle: Text(
+                            e.createdAt.toString().split(' ')[0], // Shows YYYY-MM-DD
+                            style: const TextStyle(fontSize: 12, color: Colors.grey),
+                          ),
+                          trailing: Text(
+                            '${isDebit ? "-" : "+"} ${e.amount.toInt()}',
+                            style: TextStyle(
+                              color: color,
+                              fontWeight: FontWeight.w900,
+                              fontSize: 16,
+                            ),
                           ),
                         ),
-                        const SizedBox(height: 8),
-                        Text(c.name, style: Theme.of(context).textTheme.titleMedium?.copyWith(color: Theme.of(context).colorScheme.onPrimaryContainer)),
-                      ],
-                    ),
-                  ),
+                      ),
+                    );
+                  },
+                  childCount: data.ledger.length,
                 ),
-
-                Text('Transactions', style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold)),
-                const SizedBox(height: 12),
-
-                if (data.ledger.isEmpty)
-                  Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 32),
-                    child: Center(child: Text('No transactions yet', style: Theme.of(context).textTheme.bodyLarge?.copyWith(color: Theme.of(context).colorScheme.secondary))),
-                  ),
-
-                ...data.ledger.map((e) {
-                  final isDebit = e.entryType == 'debit';
-                  final sign = isDebit ? '-' : '+';
-                  final color = isDebit ? Colors.red : Colors.green[700];
-                  final icon = isDebit ? Icons.arrow_outward : Icons.arrow_downward;
-
-                  return Card(
-                    elevation: 0,
-                    color: Theme.of(context).colorScheme.surfaceContainer,
-                    margin: const EdgeInsets.only(bottom: 8),
-                    child: ListTile(
-                      leading: CircleAvatar(
-                        backgroundColor: color?.withOpacity(0.1),
-                        child: Icon(icon, color: color, size: 20),
-                      ),
-                      title: Text(e.source, style: const TextStyle(fontWeight: FontWeight.w600)),
-                      subtitle: Text(
-                        e.createdAt.toString().split('.')[0], // Simple date formatting
-                        style: Theme.of(context).textTheme.bodySmall,
-                      ),
-                      trailing: Text(
-                        '$sign${e.amount.toStringAsFixed(2)}',
-                        style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                          color: color,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ),
-                  );
-                }),
-              ],
+              ),
             ),
-          );
-        },
+          const SliverToBoxAdapter(child: SizedBox(height: 100)),
+        ],
       ),
     );
   }

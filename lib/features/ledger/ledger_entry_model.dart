@@ -3,6 +3,7 @@ class LedgerEntryModel {
   final String entryType; // debit|credit
   final double amount;
   final String source;
+  final String batch_name;
   final DateTime createdAt;
   final Map<String, dynamic>? meta;
 
@@ -11,6 +12,7 @@ class LedgerEntryModel {
     required this.entryType,
     required this.amount,
     required this.source,
+    required this.batch_name,
     required this.createdAt,
     this.meta,
   });
@@ -25,6 +27,7 @@ class LedgerEntryModel {
           ? rawAmount.toDouble()
           : double.tryParse((rawAmount ?? '0').toString()) ?? 0.0,
       source: (json['source'] ?? '').toString(),
+      batch_name: (json['batch_name']??json['source']??'').toString(),
       createdAt: DateTime.tryParse((json['created_at'] ?? '').toString()) ??
           DateTime.fromMillisecondsSinceEpoch(0),
       meta: (json['meta'] is Map)

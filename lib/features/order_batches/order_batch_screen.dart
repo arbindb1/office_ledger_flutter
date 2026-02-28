@@ -20,12 +20,10 @@ class _OrderBatchesScreenState extends State<OrderBatchesScreen> {
   void initState() {
     super.initState();
     _service = OrderBatchService(ApiClient(AppPrefs()));
-    // Initial load
     _future = _service.listBatches();
   }
 
   Future<void> _reload() async {
-    // We create a new future and call setState so the FutureBuilder rebuilds immediately
     setState(() {
       _future = _service.listBatches();
     });
@@ -38,7 +36,7 @@ class _OrderBatchesScreenState extends State<OrderBatchesScreen> {
 
     final ok = await showDialog<bool>(
       context: context,
-      builder: (_) => AlertDialog(
+      builder: (context) => AlertDialog(
         title: const Text('New Order Batch'),
         content: Column(
           mainAxisSize: MainAxisSize.min,
@@ -62,16 +60,17 @@ class _OrderBatchesScreenState extends State<OrderBatchesScreen> {
         vendorName: vendorCtrl.text.trim().isEmpty ? null : vendorCtrl.text.trim(),
       );
 
+      // Fix for "Async Gaps" error: check if mounted before using context
       if (!mounted) return;
 
-      // Refresh the current list
       await _reload();
 
-      // Navigate to detail
       Navigator.push(
         context,
         MaterialPageRoute(builder: (_) => OrderBatchDetailScreen(batchId: batch.id)),
-      ).then((_) => _reload()); // Refresh again when returning from detail
+      ).then((_) {
+        if (mounted) _reload();
+      });
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed: $e')));
@@ -82,14 +81,11 @@ class _OrderBatchesScreenState extends State<OrderBatchesScreen> {
   Future<void> _confirmDelete(OrderBatch batch) async {
     final ok = await showDialog<bool>(
       context: context,
-      builder: (_) => AlertDialog(
+      builder: (context) => AlertDialog(
         title: const Text('Delete Batch?'),
-        content: Text('Are you sure you want to delete "${batch.title ?? 'Batch #${batch.id}'}"? This will also remove the associated colleague debts from the ledger.'),
+        content: Text('Are you sure you want to delete "${batch.title ?? 'Batch #${batch.id}'}"? This will also remove associated debts.'),
         actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Cancel'),
-          ),
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
           FilledButton(
             style: FilledButton.styleFrom(backgroundColor: Colors.red),
             onPressed: () => Navigator.pop(context, true),
@@ -104,27 +100,24 @@ class _OrderBatchesScreenState extends State<OrderBatchesScreen> {
     try {
       await _service.deleteBatch(batch.id);
       if (!mounted) return;
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Batch and associated debts archived.')),
-      );
-      // Immediately refresh the list to hide the soft-deleted batch
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Batch archived.')));
       _reload();
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error: $e')),
-      );
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
     return Scaffold(
+      backgroundColor: theme.colorScheme.surface,
       appBar: AppBar(title: const Text('Order Batches')),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: _create,
-        icon: const Icon(Icons.add),
+        icon: const Icon(Icons.add_rounded),
         label: const Text('New Batch'),
       ),
       body: RefreshIndicator(
@@ -136,131 +129,75 @@ class _OrderBatchesScreenState extends State<OrderBatchesScreen> {
               return const Center(child: CircularProgressIndicator());
             }
 
-            if (snap.hasError) {
-              return SingleChildScrollView(
-                physics: const AlwaysScrollableScrollPhysics(),
-                child: Container(
-                  height: MediaQuery.of(context).size.height * 0.7,
-                  alignment: Alignment.center,
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      const Icon(Icons.error_outline, size: 48, color: Colors.red),
-                      const SizedBox(height: 16),
-                      const Text('Failed to load batches'),
-                      const SizedBox(height: 16),
-                      FilledButton.icon(onPressed: _reload, icon: const Icon(Icons.refresh), label: const Text('Retry')),
-                    ],
-                  ),
-                ),
-              );
-            }
+            if (snap.hasError) return _buildErrorState();
 
             final batches = snap.data ?? [];
-            if (batches.isEmpty) {
-              return ListView(
-                // Ensure list is scrollable so RefreshIndicator works even when empty
-                physics: const AlwaysScrollableScrollPhysics(),
-                children: [
-                  SizedBox(
-                    height: MediaQuery.of(context).size.height * 0.7,
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(Icons.layers_outlined, size: 64, color: Colors.grey[400]),
-                        const SizedBox(height: 16),
-                        Text('No batches yet', style: Theme.of(context).textTheme.titleLarge?.copyWith(color: Colors.grey[600])),
-                        const SizedBox(height: 8),
-                        const Text('Tap "New Batch" to create one or pull to refresh'),
-                      ],
-                    ),
-                  ),
-                ],
-              );
-            }
+            if (batches.isEmpty) return _buildEmptyState();
 
             return ListView.builder(
               physics: const AlwaysScrollableScrollPhysics(),
-              padding: const EdgeInsets.all(16),
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
               itemCount: batches.length,
               itemBuilder: (context, i) {
                 final b = batches[i];
-                final title = (b.title ?? '').trim();
-                final vendor = (b.vendorName ?? '-').trim();
-                final displayTitle = title.isEmpty ? 'Batch #${b.id}' : title;
+                final isFinalized = b.status.toLowerCase() == 'finalized';
+                final displayTitle = (b.title ?? '').isEmpty ? 'Batch #${b.id}' : b.title!;
 
-                return Card(
-                  elevation: 0,
-                  color: Theme.of(context).colorScheme.surfaceContainer,
-                  margin: const EdgeInsets.only(bottom: 12),
-                  clipBehavior: Clip.antiAlias,
-                  child: InkWell(
-                    onTap: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(builder: (_) => OrderBatchDetailScreen(batchId: b.id)),
-                      ).then((_) => _reload()); // Refresh when returning from detail
-                    },
-                    onLongPress: () => _confirmDelete(b),
-                    child: Padding(
-                      padding: const EdgeInsets.all(16),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
-                            children: [
-                              Container(
-                                padding: const EdgeInsets.all(8),
-                                decoration: BoxDecoration(
-                                  color: Theme.of(context).colorScheme.secondaryContainer,
-                                  shape: BoxShape.circle,
+                return Padding(
+                  padding: const EdgeInsets.only(bottom: 12),
+                  child: Card(
+                    child: InkWell(
+                      onTap: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(builder: (_) => OrderBatchDetailScreen(batchId: b.id)),
+                        ).then((_) {
+                          if (mounted) _reload();
+                        });
+                      },
+                      onLongPress: () => _confirmDelete(b),
+                      borderRadius: BorderRadius.circular(24),
+                      child: Padding(
+                        padding: const EdgeInsets.all(20),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: [
+                                Container(
+                                  padding: const EdgeInsets.all(10),
+                                  decoration: BoxDecoration(
+                                    // Use .withValues instead of .withOpacity
+                                    color: theme.colorScheme.primary.withValues(alpha: 0.1),
+                                    shape: BoxShape.circle,
+                                  ),
+                                  child: Icon(Icons.layers_rounded, size: 20, color: theme.colorScheme.primary),
                                 ),
-                                child: Icon(Icons.layers, size: 20, color: Theme.of(context).colorScheme.onSecondaryContainer),
-                              ),
-                              const SizedBox(width: 12),
-                              Expanded(
-                                child: Text(
-                                  displayTitle,
-                                  style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
-                                ),
-                              ),
-                              Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                                decoration: BoxDecoration(
-                                  color: Theme.of(context).colorScheme.primary.withOpacity(0.1),
-                                  borderRadius: BorderRadius.circular(8),
-                                ),
-                                child: Text(
-                                  b.status.toUpperCase(),
-                                  style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                                    color: Theme.of(context).colorScheme.primary,
-                                    fontWeight: FontWeight.bold,
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: Text(
+                                    displayTitle,
+                                    style: theme.textTheme.titleMedium?.copyWith(
+                                      fontWeight: FontWeight.w800,
+                                      fontSize: 17,
+                                    ),
                                   ),
                                 ),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 12),
-                          Row(
-                            children: [
-                              Icon(Icons.store, size: 16, color: Theme.of(context).colorScheme.outline),
-                              const SizedBox(width: 4),
-                              Expanded(
-                                child: Text(
-                                  vendor,
-                                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant),
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                              ),
-                              Icon(Icons.list_alt, size: 16, color: Theme.of(context).colorScheme.outline),
-                              const SizedBox(width: 4),
-                              Text(
-                                '${b.itemsCount} Items',
-                                style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant),
-                              ),
-                            ],
-                          ),
-                        ],
+                                _buildStatusBadge(b.status, isFinalized, theme),
+                              ],
+                            ),
+                            const SizedBox(height: 16),
+                            const Divider(height: 1),
+                            const SizedBox(height: 16),
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                _buildInfoItem(Icons.store_rounded, b.vendorName ?? 'No Vendor', theme),
+                                _buildInfoItem(Icons.shopping_cart_rounded, '${b.itemsCount} Items', theme),
+                              ],
+                            ),
+                          ],
+                        ),
                       ),
                     ),
                   ),
@@ -269,6 +206,77 @@ class _OrderBatchesScreenState extends State<OrderBatchesScreen> {
             );
           },
         ),
+      ),
+    );
+  }
+
+  Widget _buildStatusBadge(String status, bool isFinalized, ThemeData theme) {
+    final color = isFinalized ? Colors.green : theme.colorScheme.primary;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Text(
+        status.toUpperCase(),
+        style: TextStyle(
+          color: color,
+          fontSize: 10,
+          fontWeight: FontWeight.w900,
+          letterSpacing: 0.5,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildInfoItem(IconData icon, String label, ThemeData theme) {
+    return Row(
+      children: [
+        Icon(icon, size: 16, color: theme.colorScheme.outline),
+        const SizedBox(width: 6),
+        Text(
+          label,
+          style: theme.textTheme.bodyMedium?.copyWith(
+            color: theme.colorScheme.onSurfaceVariant,
+            fontWeight: FontWeight.w500,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildEmptyState() {
+    return ListView(
+      physics: const AlwaysScrollableScrollPhysics(),
+      children: [
+        SizedBox(
+          height: MediaQuery.of(context).size.height * 0.7,
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(Icons.layers_clear_rounded, size: 64, color: Colors.grey[300]),
+              const SizedBox(height: 16),
+              Text('No active batches', style: Theme.of(context).textTheme.titleLarge?.copyWith(color: Colors.grey[600])),
+              const SizedBox(height: 8),
+              const Text('Create a batch to start tracking orders'),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildErrorState() {
+    return Center(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Icon(Icons.error_outline, size: 48, color: Colors.red),
+          const SizedBox(height: 16),
+          const Text('Failed to load batches'),
+          TextButton(onPressed: _reload, child: const Text('Retry')),
+        ],
       ),
     );
   }
