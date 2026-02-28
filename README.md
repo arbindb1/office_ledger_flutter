@@ -1,16 +1,10 @@
-# office_ledger_flutter
+# 🍔 Office Food Ledger: Project Overview
 
-A new Flutter project.
+This system was created by me to simplify how we track our daily food runs. Since we usually head out **twice a day** to buy food for the office, managing orders from the group chat and tracking who owes what became a manual headache.
 
-## Getting Started
+This app is designed to:
+1.  **Simplify Ordering**: No more scrolling through group chats to find everyone's requests.
+2.  **Track Dues**: Automatically calculate how much each colleague owes.
+3.  **Manage Clearances**: Easily mark when someone has paid for their meal.
 
-This project is a starting point for a Flutter application.
-
-A few resources to get you started if this is your first Flutter project:
-
-- [Lab: Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Cookbook: Useful Flutter samples](https://docs.flutter.dev/cookbook)
-
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+---
