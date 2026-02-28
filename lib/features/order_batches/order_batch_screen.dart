@@ -20,13 +20,16 @@ class _OrderBatchesScreenState extends State<OrderBatchesScreen> {
   void initState() {
     super.initState();
     _service = OrderBatchService(ApiClient(AppPrefs()));
+    // Initial load
     _future = _service.listBatches();
   }
 
   Future<void> _reload() async {
-    final f = _service.listBatches();
-    setState(() => _future = f);
-    await f;
+    // We create a new future and call setState so the FutureBuilder rebuilds immediately
+    setState(() {
+      _future = _service.listBatches();
+    });
+    await _future;
   }
 
   Future<void> _create() async {
@@ -53,18 +56,66 @@ class _OrderBatchesScreenState extends State<OrderBatchesScreen> {
 
     if (ok != true) return;
 
-    final batch = await _service.createBatch(
-      title: titleCtrl.text.trim(),
-      vendorName: vendorCtrl.text.trim().isEmpty ? null : vendorCtrl.text.trim(),
+    try {
+      final batch = await _service.createBatch(
+        title: titleCtrl.text.trim(),
+        vendorName: vendorCtrl.text.trim().isEmpty ? null : vendorCtrl.text.trim(),
+      );
+
+      if (!mounted) return;
+
+      // Refresh the current list
+      await _reload();
+
+      // Navigate to detail
+      Navigator.push(
+        context,
+        MaterialPageRoute(builder: (_) => OrderBatchDetailScreen(batchId: batch.id)),
+      ).then((_) => _reload()); // Refresh again when returning from detail
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed: $e')));
+      }
+    }
+  }
+
+  Future<void> _confirmDelete(OrderBatch batch) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('Delete Batch?'),
+        content: Text('Are you sure you want to delete "${batch.title ?? 'Batch #${batch.id}'}"? This will also remove the associated colleague debts from the ledger.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: Colors.red),
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
     );
 
-    if (!mounted) return;
-    await _reload();
+    if (ok != true) return;
 
-    Navigator.push(
-      context,
-      MaterialPageRoute(builder: (_) => OrderBatchDetailScreen(batchId: batch.id)),
-    );
+    try {
+      await _service.deleteBatch(batch.id);
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Batch and associated debts archived.')),
+      );
+      // Immediately refresh the list to hide the soft-deleted batch
+      _reload();
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error: $e')),
+      );
+    }
   }
 
   @override
@@ -76,47 +127,60 @@ class _OrderBatchesScreenState extends State<OrderBatchesScreen> {
         icon: const Icon(Icons.add),
         label: const Text('New Batch'),
       ),
-      body: FutureBuilder<List<OrderBatch>>(
-        future: _future,
-        builder: (context, snap) {
-          if (snap.connectionState == ConnectionState.waiting) {
-            return const Center(child: CircularProgressIndicator());
-          }
+      body: RefreshIndicator(
+        onRefresh: _reload,
+        child: FutureBuilder<List<OrderBatch>>(
+          future: _future,
+          builder: (context, snap) {
+            if (snap.connectionState == ConnectionState.waiting) {
+              return const Center(child: CircularProgressIndicator());
+            }
 
-          if (snap.hasError) {
-            return Center(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
+            if (snap.hasError) {
+              return SingleChildScrollView(
+                physics: const AlwaysScrollableScrollPhysics(),
+                child: Container(
+                  height: MediaQuery.of(context).size.height * 0.7,
+                  alignment: Alignment.center,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(Icons.error_outline, size: 48, color: Colors.red),
+                      const SizedBox(height: 16),
+                      const Text('Failed to load batches'),
+                      const SizedBox(height: 16),
+                      FilledButton.icon(onPressed: _reload, icon: const Icon(Icons.refresh), label: const Text('Retry')),
+                    ],
+                  ),
+                ),
+              );
+            }
+
+            final batches = snap.data ?? [];
+            if (batches.isEmpty) {
+              return ListView(
+                // Ensure list is scrollable so RefreshIndicator works even when empty
+                physics: const AlwaysScrollableScrollPhysics(),
                 children: [
-                  const Icon(Icons.error_outline, size: 48, color: Colors.red),
-                  const SizedBox(height: 16),
-                  Text('Failed to load batches', style: Theme.of(context).textTheme.titleMedium),
-                  const SizedBox(height: 16),
-                  FilledButton.icon(onPressed: _reload, icon: const Icon(Icons.refresh), label: const Text('Retry')),
+                  SizedBox(
+                    height: MediaQuery.of(context).size.height * 0.7,
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(Icons.layers_outlined, size: 64, color: Colors.grey[400]),
+                        const SizedBox(height: 16),
+                        Text('No batches yet', style: Theme.of(context).textTheme.titleLarge?.copyWith(color: Colors.grey[600])),
+                        const SizedBox(height: 8),
+                        const Text('Tap "New Batch" to create one or pull to refresh'),
+                      ],
+                    ),
+                  ),
                 ],
-              ),
-            );
-          }
+              );
+            }
 
-          final batches = snap.data ?? [];
-          if (batches.isEmpty) {
-            return Center(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                   Icon(Icons.layers_outlined, size: 64, color: Colors.grey[400]),
-                  const SizedBox(height: 16),
-                   Text('No batches yet', style: Theme.of(context).textTheme.titleLarge?.copyWith(color: Colors.grey[600])),
-                   const SizedBox(height: 8),
-                   const Text('Tap "New Batch" to create one'),
-                ],
-              ),
-            );
-          }
-
-          return RefreshIndicator(
-            onRefresh: _reload,
-            child: ListView.builder(
+            return ListView.builder(
+              physics: const AlwaysScrollableScrollPhysics(),
               padding: const EdgeInsets.all(16),
               itemCount: batches.length,
               itemBuilder: (context, i) {
@@ -135,8 +199,9 @@ class _OrderBatchesScreenState extends State<OrderBatchesScreen> {
                       Navigator.push(
                         context,
                         MaterialPageRoute(builder: (_) => OrderBatchDetailScreen(batchId: b.id)),
-                      );
+                      ).then((_) => _reload()); // Refresh when returning from detail
                     },
+                    onLongPress: () => _confirmDelete(b),
                     child: Padding(
                       padding: const EdgeInsets.all(16),
                       child: Column(
@@ -201,10 +266,9 @@ class _OrderBatchesScreenState extends State<OrderBatchesScreen> {
                   ),
                 );
               },
-            ),
-          );
-
-        },
+            );
+          },
+        ),
       ),
     );
   }

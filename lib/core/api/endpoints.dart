@@ -4,6 +4,7 @@ class Endpoints {
   static String item(int id) => '/api/items/$id';
   static String deactivateItem(int id) => '/api/items/$id/deactivate';
   static const orderBatches = '/api/order-batches';
+  static const orderBatchDelete = '/api/order-batch';
   static String orderBatch(int id) => '/api/order-batches/$id';
   static String orderBatchItems(int id) => '/api/order-batches/$id/items';
   static String finalizeOrderBatch(int id) => '/api/order-batches/$id/finalize';

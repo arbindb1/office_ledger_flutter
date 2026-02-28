@@ -42,7 +42,7 @@ class _ColleagueFormSheetState extends State<ColleagueFormSheet> {
               mainAxisSize: MainAxisSize.min,
               children: [
                 const Text(
-                  'Add Colleague',
+                  'Add Person',
                   style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
                 ),
                 const SizedBox(height: 16),

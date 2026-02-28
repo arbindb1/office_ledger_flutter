@@ -25,9 +25,12 @@ class _ItemsScreenState extends State<ItemsScreen> {
   }
 
   Future<void> _reload() async {
-    final future = _service.fetchItems(includeInactive: _includeInactive);
-    setState(() => _future = future);
-    await future;
+    // Update the future and trigger a rebuild
+    setState(() {
+      _future = _service.fetchItems(includeInactive: _includeInactive);
+    });
+    // Wait for the data to actually arrive (important for RefreshIndicator)
+    await _future;
   }
 
   Future<void> _openCreate() async {
@@ -156,6 +159,7 @@ class _ItemsScreenState extends State<ItemsScreen> {
           return RefreshIndicator(
             onRefresh: _reload,
             child: ListView.builder(
+              physics: const AlwaysScrollableScrollPhysics(),
               padding: const EdgeInsets.all(16),
               itemCount: items.length,
               itemBuilder: (context, i) {

@@ -42,7 +42,6 @@ class ColleaguesService {
     await dio.post(Endpoints.colleagueDeactivate(id));
   }
 
-  // OPTIONAL: only if you want aliases in Flutter now
   Future<void> addAlias({
     required int id,
     required String alias,
@@ -51,14 +50,19 @@ class ColleaguesService {
     await dio.post(Endpoints.colleagueAliases(id), data: {'alias': alias});
   }
 
-  // OPTIONAL: only if you want ledger screen now
   Future<dynamic> fetchLedger(int id) async {
     final dio = await _apiClient.dio();
     final res = await dio.get(Endpoints.colleagueLedger(id));
     return res.data;
   }
+  Future<void> updateColleague({
+    required int id,
+    required String name,
+    required bool isActive,
+  }) async {
+    final dio = await _apiClient.dio();
 
-// NOTE:
-// updateColleague() REMOVED because backend has no PUT /api/colleagues/{id}.
-// If you add that route later, we can re-add updateColleague safely.
+    await dio.post(Endpoints.colleagueDeactivate(id));
+  }
+
 }

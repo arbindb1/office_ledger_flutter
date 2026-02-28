@@ -109,7 +109,7 @@ class _AddBatchItemSheetState extends State<AddBatchItemSheet> {
 
                 DropdownButtonFormField<int>(
                   value: _colleagueId,
-                  decoration: const InputDecoration(labelText: 'Colleague'),
+                  decoration: const InputDecoration(labelText: 'Person'),
                   items: _colleagues
                       .map((c) => DropdownMenuItem(
                     value: c.id,

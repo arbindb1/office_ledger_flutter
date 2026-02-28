@@ -67,4 +67,9 @@ class OrderBatchService {
     final dio = await _apiClient.dio();
     await dio.post(Endpoints.finalizeOrderBatch(batchId));
   }
+
+  Future<void> deleteBatch(int id) async {
+    final dio = await _apiClient.dio();
+    // Using the DELETE method as defined in your Laravel route
+    await dio.delete('${Endpoints.orderBatchDelete}/$id');  }
 }

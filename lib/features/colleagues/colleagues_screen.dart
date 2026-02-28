@@ -30,42 +30,27 @@ class _ColleaguesScreenState extends State<ColleaguesScreen> {
     _future = _service.fetchColleagues(includeInactive: _includeInactive);
   }
 
+  // Forces a state update and creates a fresh Future to refresh UI
   Future<void> _refresh() async {
-    final future = _service.fetchColleagues(includeInactive: _includeInactive);
-    setState(() => _future = future);
-    await future;
+    setState(() {
+      _future = _service.fetchColleagues(includeInactive: _includeInactive);
+    });
+    await _future;
   }
 
-  Future<void> _openCreate() async {
-    final payload = await showModalBottomSheet<Map<String, dynamic>>(
-      context: context,
-      isScrollControlled: true,
-      useSafeArea: true,
-      builder: (_) => const ColleagueFormSheet(),
-    );
+  // Safety confirmation before deactivating a colleague
+  Future<void> _confirmDeactivate(Colleague colleague) async {
+    if (!colleague.isActive) return;
 
-    if (payload == null) return;
-
-    await _service.createColleague(
-      name: payload['name'] as String,
-      isActive: payload['is_active'] as bool,
-    );
-
-    if (mounted) _refresh();
-  }
-
-  Future<void> _deactivate(Colleague c) async {
     final ok = await showDialog<bool>(
       context: context,
       builder: (_) => AlertDialog(
-        title: const Text('Deactivate colleague?'),
-        content: Text('Deactivate "${c.name}"?'),
+        title: const Text('Deactivate Colleague?'),
+        content: Text('Deactivate "${colleague.name}"? They will be hidden from new order batches.'),
         actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.orange),
             onPressed: () => Navigator.pop(context, true),
             child: const Text('Deactivate'),
           ),
@@ -76,164 +61,159 @@ class _ColleaguesScreenState extends State<ColleaguesScreen> {
     if (ok != true) return;
 
     try {
-      await _service.deactivateColleague(c.id);
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Colleague deactivated')),
+      await _service.updateColleague(
+        id: colleague.id,
+        name: colleague.name,
+        isActive: false,
       );
-      await _refresh();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('${colleague.name} deactivated')));
+        _refresh();
+      }
     } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Failed to deactivate: $e')),
-      );
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
     }
+  }
+
+  double _calculateTotalBalance(List<Colleague> colleagues) {
+    return colleagues.fold(0.0, (sum, item) => sum + item.balance);
   }
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
     return Scaffold(
+      backgroundColor: theme.colorScheme.surface,
       appBar: AppBar(
-        title: const Text('Colleagues'),
-        centerTitle: false,
+        title: const Text('Office Ledger', style: TextStyle(fontWeight: FontWeight.bold)),
         actions: [
           IconButton(
-            icon: const Icon(Icons.notifications_outlined),
-            tooltip: 'Notifications',
-            onPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(builder: (_) => const NotificationsScreen()),
-              );
-            },
+            icon: const Icon(Icons.notifications_none_rounded),
+            onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const NotificationsScreen())),
           ),
           PopupMenuButton<String>(
+            icon: const Icon(Icons.more_vert_rounded),
             onSelected: (value) {
               switch (value) {
                 case 'inventory':
-                  Navigator.push(context, MaterialPageRoute(builder: (_) => const ItemsScreen()));
+                  Navigator.push(context, MaterialPageRoute(builder: (_) => const ItemsScreen())).then((_) => _refresh());
                   break;
                 case 'batches':
-                  Navigator.push(context, MaterialPageRoute(builder: (_) => const OrderBatchesScreen()));
+                  Navigator.push(context, MaterialPageRoute(builder: (_) => const OrderBatchesScreen())).then((_) => _refresh());
                   break;
                 case 'settings':
-                  Navigator.push(context, MaterialPageRoute(builder: (_) => const ApiBaseUrlScreen()))
-                      .then((_) { if (mounted) _refresh(); });
+                  Navigator.push(context, MaterialPageRoute(builder: (_) => const ApiBaseUrlScreen())).then((_) => _refresh());
                   break;
                 case 'toggle_inactive':
-                  setState(() {
-                    _includeInactive = !_includeInactive;
-                    _refresh();
-                  });
+                  setState(() => _includeInactive = !_includeInactive);
+                  _refresh();
                   break;
               }
             },
             itemBuilder: (context) => [
               PopupMenuItem(
                 value: 'toggle_inactive',
-                child: Row(
-                  children: [
-                     Icon(
-                      _includeInactive ? Icons.check_box : Icons.check_box_outline_blank,
-                      color: Theme.of(context).primaryColor,
-                    ),
-                    const SizedBox(width: 12),
-                    const Text('Show Inactive'),
-                  ],
+                child: ListTile(
+                  leading: Icon(_includeInactive ? Icons.check_box : Icons.check_box_outline_blank, color: theme.colorScheme.primary),
+                  title: const Text('Show Inactive'),
+                  contentPadding: EdgeInsets.zero,
                 ),
               ),
               const PopupMenuDivider(),
-              const PopupMenuItem(
-                value: 'inventory',
-                child: Row(
-                  children: [Icon(Icons.inventory_2_outlined), SizedBox(width: 12), Text('Inventory')],
-                ),
-              ),
-              const PopupMenuItem(
-                value: 'batches',
-                child: Row(
-                  children: [Icon(Icons.layers_outlined), SizedBox(width: 12), Text('Order Batches')],
-                ),
-              ),
+              const PopupMenuItem(value: 'inventory', child: ListTile(leading: Icon(Icons.inventory_2_outlined), title: Text('Inventory'), contentPadding: EdgeInsets.zero)),
+              const PopupMenuItem(value: 'batches', child: ListTile(leading: Icon(Icons.layers_outlined), title: Text('Order Batches'), contentPadding: EdgeInsets.zero)),
               const PopupMenuDivider(),
-              const PopupMenuItem(
-                value: 'settings',
-                child: Row(
-                  children: [Icon(Icons.settings_outlined), SizedBox(width: 12), Text('Settings')],
-                ),
-              ),
+              const PopupMenuItem(value: 'settings', child: ListTile(leading: Icon(Icons.settings_outlined), title: Text('Settings'), contentPadding: EdgeInsets.zero)),
             ],
           ),
         ],
       ),
       floatingActionButton: FloatingActionButton.extended(
-        onPressed: _openCreate,
-        icon: const Icon(Icons.add),
-        label: const Text('New Colleague'),
+        onPressed: () async {
+          final payload = await showModalBottomSheet<Map<String, dynamic>>(context: context, isScrollControlled: true, useSafeArea: true, builder: (_) => const ColleagueFormSheet());
+          if (payload != null) {
+            await _service.createColleague(name: payload['name'] as String, isActive: payload['is_active'] as bool);
+            _refresh();
+          }
+        },
+        icon: const Icon(Icons.add_rounded),
+        label: const Text('Add Person'),
       ),
       body: FutureBuilder<List<Colleague>>(
         future: _future,
         builder: (context, snap) {
-          if (snap.connectionState == ConnectionState.waiting) {
-            return const Center(child: CircularProgressIndicator());
-          }
-          if (snap.hasError) {
-            return Center(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const Icon(Icons.error_outline, size: 48, color: Colors.red),
-                  const SizedBox(height: 16),
-                  Text('Failed to load colleagues', style: Theme.of(context).textTheme.titleMedium),
-                  Text('${snap.error}', style: Theme.of(context).textTheme.bodySmall),
-                  const SizedBox(height: 16),
-                  FilledButton.icon(
-                    onPressed: _refresh,
-                    icon: const Icon(Icons.refresh),
-                    label: const Text('Retry'),
-                  ),
-                ],
-              ),
-            );
-          }
+          if (snap.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator());
+          if (snap.hasError) return _buildErrorState(snap.error.toString());
 
           final items = snap.data ?? [];
-          if (items.isEmpty) {
-            return Center(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(Icons.people_outline, size: 64, color: Colors.grey[400]),
-                  const SizedBox(height: 16),
-                  Text('No colleagues found', style: Theme.of(context).textTheme.titleLarge?.copyWith(color: Colors.grey[600])),
-                ],
-              ),
-            );
-          }
+          final totalDebt = _calculateTotalBalance(items);
 
           return RefreshIndicator(
             onRefresh: _refresh,
-            child: ListView.builder(
-              padding: const EdgeInsets.all(16),
-              itemCount: items.length,
-              itemBuilder: (context, i) {
-                final c = items[i];
-                return _ColleagueCard(
-                  colleague: c,
-                  onTap: () {
-                     Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => ColleagueLedgerScreen(colleagueId: c.id),
+            child: CustomScrollView(
+              physics: const AlwaysScrollableScrollPhysics(), // Important for RefreshIndicator
+              slivers: [
+                SliverToBoxAdapter(child: _buildDashboard(theme, totalDebt)),
+                if (items.isEmpty)
+                  const SliverFillRemaining(child: Center(child: Text('No colleagues found')))
+                else
+                  SliverPadding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    sliver: SliverList(
+                      delegate: SliverChildBuilderDelegate(
+                            (context, i) {
+                          final c = items[i];
+                          return _ColleagueCard(
+                            colleague: c,
+                            onTap: () => Navigator.push(
+                              context,
+                              MaterialPageRoute(builder: (_) => ColleagueLedgerScreen(colleagueId: c.id)),
+                            ).then((_) => _refresh()),
+                            onLongPress: () => _confirmDeactivate(c),
+                          );
+                        },
+                        childCount: items.length,
                       ),
-                    );
-                  },
-                  onDeactivate: c.isActive ? () => _deactivate(c) : null,
-                );
-              },
+                    ),
+                  ),
+              ],
             ),
           );
         },
+      ),
+    );
+  }
+
+  Widget _buildDashboard(ThemeData theme, double total) {
+    return Container(
+      margin: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(24),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(colors: [theme.colorScheme.primary, theme.colorScheme.secondary], begin: Alignment.topLeft, end: Alignment.bottomRight),
+        borderRadius: BorderRadius.circular(24),
+        boxShadow: [BoxShadow(color: theme.colorScheme.primary.withOpacity(0.3), blurRadius: 12, offset: const Offset(0, 6))],
+      ),
+      child: Column(
+        children: [
+          Text('Total Office Balance', style: theme.textTheme.titleSmall?.copyWith(color: theme.colorScheme.onPrimary.withOpacity(0.8))),
+          const SizedBox(height: 8),
+          Text('Rs. ${total.toStringAsFixed(2)}', style: theme.textTheme.headlineMedium?.copyWith(color: theme.colorScheme.onPrimary, fontWeight: FontWeight.bold)),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildErrorState(String error) {
+    return Center(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Icon(Icons.cloud_off_rounded, size: 64, color: Colors.grey),
+          const SizedBox(height: 16),
+          const Text('Connection Error'),
+          TextButton(onPressed: _refresh, child: const Text('Try Again')),
+        ],
       ),
     );
   }
@@ -242,36 +222,34 @@ class _ColleaguesScreenState extends State<ColleaguesScreen> {
 class _ColleagueCard extends StatelessWidget {
   final Colleague colleague;
   final VoidCallback onTap;
-  final VoidCallback? onDeactivate;
+  final VoidCallback onLongPress;
 
-  const _ColleagueCard({
-    required this.colleague,
-    required this.onTap,
-    this.onDeactivate,
-  });
+  const _ColleagueCard({required this.colleague, required this.onTap, required this.onLongPress});
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final initials = colleague.name.isNotEmpty ? colleague.name.trim().substring(0, 1).toUpperCase() : '?';
+    final initials = colleague.name.isNotEmpty ? colleague.name[0].toUpperCase() : '?';
 
     return Card(
       elevation: 0,
-      color: theme.colorScheme.surfaceContainer, // M3 surface variant
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16), side: BorderSide(color: theme.colorScheme.outlineVariant)),
       margin: const EdgeInsets.only(bottom: 12),
       clipBehavior: Clip.antiAlias,
       child: InkWell(
         onTap: onTap,
-        onLongPress: onDeactivate,
+        onLongPress: onLongPress,
         child: Padding(
           padding: const EdgeInsets.all(16.0),
           child: Row(
             children: [
               CircleAvatar(
                 radius: 24,
-                backgroundColor: theme.colorScheme.primaryContainer,
-                foregroundColor: theme.colorScheme.onPrimaryContainer,
-                child: Text(initials, style: const TextStyle(fontWeight: FontWeight.bold)),
+                backgroundColor: theme.colorScheme.surfaceContainerHighest,
+                child: Opacity(
+                  opacity: colleague.isActive ? 1.0 : 0.5,
+                  child: Text(initials, style: TextStyle(color: theme.colorScheme.primary, fontWeight: FontWeight.bold)),
+                ),
               ),
               const SizedBox(width: 16),
               Expanded(
@@ -281,39 +259,13 @@ class _ColleagueCard extends StatelessWidget {
                     Text(
                       colleague.name,
                       style: theme.textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.w600,
+                        fontWeight: FontWeight.bold,
+                        decoration: colleague.isActive ? null : TextDecoration.lineThrough,
+                        color: colleague.isActive ? null : theme.colorScheme.outline,
                       ),
                     ),
                     const SizedBox(height: 4),
-                    Row(
-                      children: [
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                          decoration: BoxDecoration(
-                            color: colleague.isActive 
-                                ? Colors.green.withOpacity(0.1) 
-                                : Colors.grey.withOpacity(0.1),
-                            borderRadius: BorderRadius.circular(4),
-                            border: Border.all(
-                              color: colleague.isActive ? Colors.green : Colors.grey,
-                              width: 0.5
-                            ),
-                          ),
-                          child: Text(
-                            colleague.isActive ? 'Active' : 'Inactive',
-                            style: theme.textTheme.labelSmall?.copyWith(
-                              color: colleague.isActive ? Colors.green[700] : Colors.grey[700],
-                              fontWeight: FontWeight.w500,
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                         Text(
-                          'ID: ${colleague.id}',
-                          style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.outline),
-                        ),
-                      ],
-                    ),
+                    Text(colleague.isActive ? 'Active Member' : 'Inactive', style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.outline)),
                   ],
                 ),
               ),
@@ -321,16 +273,15 @@ class _ColleagueCard extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
                   Text(
-                    colleague.balance.toStringAsFixed(2),
-                    style: theme.textTheme.titleLarge?.copyWith(
-                      color: colleague.balance < 0 ? Colors.red : theme.colorScheme.onSurface,
+                    'Rs. ${colleague.balance.toStringAsFixed(2)}',
+                    style: theme.textTheme.titleMedium?.copyWith(
                       fontWeight: FontWeight.bold,
+                      color: colleague.isActive
+                          ? (colleague.balance > 0 ? Colors.redAccent : Colors.green)
+                          : theme.colorScheme.outline,
                     ),
                   ),
-                  Text(
-                    'Balance',
-                    style: theme.textTheme.labelSmall?.copyWith(color: theme.colorScheme.outline),
-                  ),
+                  const Text('Due', style: TextStyle(fontSize: 10)),
                 ],
               ),
             ],
